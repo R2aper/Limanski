@@ -1,4 +1,6 @@
 
+import { GenericEvent } from "./events.js";
+
 /**
  * A class representing a 2d vector
  */
@@ -10,6 +12,9 @@ export class Vec2 {
         this.X = x;
         this.Y = y;
     }
+
+    public static One(): Vec2 { return new Vec2(1,1); }
+    public static Zero(): Vec2 { return new Vec2(0,0); }
 
     public Add(other: Vec2): Vec2 {
         return new Vec2(this.X + other.X, this.Y + other.Y);
@@ -35,6 +40,10 @@ export class Vec2 {
         }
     }
 
+    public Length(): number {
+        return Math.sqrt(this.X*this.X + this.Y*this.Y)
+    }
+
     static From<T extends Record<string, number>>(obj: T, keys: { x: keyof T; y: keyof T }): Vec2 {
         return new Vec2(obj[keys.x], obj[keys.y]);
     }
@@ -52,7 +61,7 @@ export class CDim {
     public Absolute: Vec2;
 
     public static FromRelative(rx: number, ry: number): CDim { return this.Comps(rx, ry, 0, 0); }
-    public static FromAbsolute(ax: number, ay: number): CDim { return this.Comps(1, 1, ax, ay); }
+    public static FromAbsolute(ax: number, ay: number): CDim { return this.Comps(0, 0, ax, ay); }
     public static Identity(): CDim { return this.Comps(1, 1, 0, 0); }
     
     public static Comps(rx: number, ry: number, ax: number, ay: number): CDim {
@@ -83,6 +92,56 @@ export class Color {
     }
 }
 
+export enum MouseButton {
+    Left = 0,
+    Wheel = 1,
+    Right = 2,
+    Other = 3,
+    None = 4
+}
+
+export enum ButtonPress {
+    Held, Released, Rising, Lowering
+}
+
+export class Input {
+
+    public static InputChanged: GenericEvent<[MouseButton, ButtonPress]> = new GenericEvent();
+
+    public static Mouse = {
+        Position: new Vec2(0, 0), Pressed: MouseButton.None, Previous: new Vec2(0, 0), Delta: new Vec2(0, 0)
+    };
+
+    public static Update() {
+        this.Mouse.Delta = this.Mouse.Position.Sub(this.Mouse.Previous);
+        this.Mouse.Previous = this.Mouse.Position;
+    }
+
+    public static Initialize(canvas: HTMLCanvasElement) {
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            this.Mouse.Position = new Vec2(e.clientX - rect.left, e.clientY - rect.top);
+            console.log(this.Mouse.Delta)
+          });
+          
+          canvas.addEventListener('mousedown', (e: MouseEvent) => {
+            let prev = this.Mouse.Pressed;
+            switch (e.button) {
+              case 0: this.Mouse.Pressed = MouseButton.Left; break;
+              case 1: this.Mouse.Pressed = MouseButton.Wheel; break;
+              case 2: this.Mouse.Pressed = MouseButton.Right; break;
+              default: this.Mouse.Pressed = MouseButton.Other; break;
+            }
+            if (prev == MouseButton.None) { this.InputChanged.Fire(this.Mouse.Pressed, ButtonPress.Lowering); }
+          });
+          
+          canvas.addEventListener('mouseup', () => {
+            this.InputChanged.Fire(this.Mouse.Pressed, ButtonPress.Rising);
+            this.Mouse.Pressed = MouseButton.None;
+          });
+    }
+}
+
 /**
  * Base class for canvas controls (GUI elements)
  */
@@ -90,6 +149,7 @@ export abstract class Control {
 
     public static Canvas: HTMLCanvasElement;
     public static Context: CanvasRenderingContext2D;
+    public static Debug: boolean = false;
 
     public Position: CDim = CDim.Comps(0,0,0,0);
     public Size: CDim = CDim.Identity();
@@ -110,7 +170,7 @@ export abstract class Control {
         const parentSize = this.Parent?.PixelSize() ?? 
             new Vec2(Control.Canvas.width, Control.Canvas.height); // Use .width/.height
         let position = this.Position.With(parentSize);
-        return position.Sub(position.Mult(this.Anchor));
+        return position.Sub(this.PixelSize().Mult(this.Anchor));
     }
 
     constructor() {
@@ -120,6 +180,35 @@ export abstract class Control {
     /** @virtual */
     public Draw(): void { 
         for(let child of this.Children) { child.Draw(); }
+        if(Control.Debug) {
+            let pos = this.PixelPosition();
+            let size = this.PixelSize();
+
+            Control.Context.font = '16px Arial'
+            Control.Context.strokeStyle = 'magenta'
+            Control.Context.fillStyle = 'magenta';
+            Control.Context.lineWidth = 2;
+
+            let textsize = Control.Context.measureText(this.constructor.name)
+            let textWidth = textsize.width;
+            let textHeight = textsize.actualBoundingBoxAscent + textsize.actualBoundingBoxDescent;
+            
+            Control.Context.beginPath();
+            Control.Context.rect(pos.X, pos.Y, size.X, size.Y);
+            Control.Context.stroke();
+
+            
+            Control.Context.beginPath();
+            Control.Context.rect(pos.X, pos.Y, textWidth, textHeight);
+            Control.Context.fill()
+
+            Control.Context.fillStyle = 'black';
+            Control.Context.fillText(this.constructor.name, pos.X, pos.Y + textHeight - 1)
+        }
+    }
+
+    public Update(): void {
+        for(let child of this.Children) { child.Update(); }
     }
 }
 
@@ -133,9 +222,10 @@ export class GUILayer {
     }
 
     public Draw(): void {
-
+        Input.Update();
         for(let child of this.Elements) {
             child.Draw();
+            child.Update();
         }
         window.requestAnimationFrame(this.Draw)
     }
@@ -151,18 +241,37 @@ export class Rectangle extends Control {
 
     public override Draw(): void {
 
-        let ctx = Control.Context;
         let pos = this.PixelPosition();
         let size = this.PixelSize();
 
-        console.log(pos)
-        console.log(size)
-
-        ctx.fillStyle = this.Color.CSS();
-        ctx.beginPath();
-        ctx.rect(pos.X, pos.Y, size.X, size.Y);
-        ctx.fill()
+        Control.Context.fillStyle = this.Color.CSS();
+        Control.Context.beginPath();
+        Control.Context.rect(pos.X, pos.Y, size.X, size.Y);
+        Control.Context.fill()
 
         super.Draw();
+    }
+}
+
+export class ImageRect extends Control {
+    public Source: HTMLImageElement;
+    public Loaded: boolean = false;
+
+    public override Draw(): void {
+        if (!this.Loaded) return;
+
+        let pos = this.PixelPosition();
+        let size = this.PixelSize();
+
+        Control.Context.drawImage(this.Source, pos.X, pos.Y, size.X, size.Y);
+
+        super.Draw();
+    }
+
+    constructor(path: string) {
+        super();
+        this.Source = new Image();
+        this.Source.src = path;
+        this.Source.onload = () => { this.Loaded = true; }
     }
 }
