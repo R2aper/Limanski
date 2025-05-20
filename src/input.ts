@@ -12,19 +12,37 @@ export enum MouseButton {
 }
 
 export enum ButtonPress {
-    Held, Released, Rising, Lowering
+    Held,       // The button is currently held down
+    Released,   // The button is currently released (not held down)
+    Rising,     // The button was just released (was held during the previous cycle)
+    Lowering    // The butto was just pressed (was released during the previous cycle)
 }
 
+/**
+ * @description
+ * A member of input pipeline, able to capture the input and fire according events.
+ * A consumer is able to block the input from propagating to the following consumers.
+ * The consumer position in the pipeline is determined by the {@link InputConsumer.Priority | Priority} property:
+ * lesser values come after the greater ones ( 1 -> 0 -> -1).
+ * 
+ * For example, if a consumer with priority `1` blocks the propagation, the consumer with priority `0` will not fire.
+ * 
+ * The blocking mechanism persists only for *one* cycle, after that it is reset to non-blocking mode.
+ */
 export class InputConsumer {
-    public Blocking: boolean = false;
     public MouseEvent: MouseInputEvent = new GenericEvent();
     public Priority: number = 0;
+    public Blocking: boolean = false;
+
 
     constructor(priority: number) {
         this.Priority = priority;
     }
 }
 
+/**
+ * Static input controlling class. Requires {@link InputController.Initialize} to be called first.
+ */
 export class InputController {
 
     protected static InputChanged: GenericEvent<[MouseButton, ButtonPress]> = new GenericEvent();
@@ -39,11 +57,17 @@ export class InputController {
         this.Mouse.Previous = this.Mouse.Position;
     }
 
+    /**
+     * Add an {@link InputConsumer} to the input pipeline
+     */
     public static Register(consumer: InputConsumer): void {
         this.Consumers.push(consumer);
         this.Consumers.sort((a,b) => b.Priority - a.Priority); // descending order
     }
 
+    /**
+     * Remove an {@link InputConsumer} to the input pipeline
+     */
     public static Unregister(consumer: InputConsumer): void {
         this.Consumers.splice(this.Consumers.indexOf(consumer), 1);
     }

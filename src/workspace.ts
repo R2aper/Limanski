@@ -1,6 +1,9 @@
 import * as gui from './gui.js'
 import * as input from "./input.js";
 
+/**
+ * A generic member of the {@link Workspace} class, responding to clicks, selections, camera offsets and scaling
+ */
 export abstract class WorkspaceElement {
 
     public static WORSPACE_ELEMENT_INPUT_PRIORITY: number = 0;
@@ -9,7 +12,10 @@ export abstract class WorkspaceElement {
     public Focused: boolean = false;
     public Selected: boolean = false;
     public Parent!: Workspace;
+
+    protected Input: input.InputConsumer;
     
+    // Check if the workspace element contains a vec2 position
     public Contains(probe: gui.Vec2): boolean { 
         let adjusted_pos = this.GetScreenPosition()
         return adjusted_pos.Contains(
@@ -25,27 +31,29 @@ export abstract class WorkspaceElement {
     
     constructor() {
 
-        let element_input_consumer = new input.InputConsumer(WorkspaceElement.WORSPACE_ELEMENT_INPUT_PRIORITY);
-        element_input_consumer.Blocking = false;
-        element_input_consumer.MouseEvent.Hook((button, press_type) => {
+        // create an input consumer for the element to handle all the generic logic:
+        // focus on left click, select on shift + left click or when in selection box, summon context menu on right click
+        // etc
+        this.Input = new input.InputConsumer(WorkspaceElement.WORSPACE_ELEMENT_INPUT_PRIORITY);
+        this.Input.MouseEvent.Hook((button, press_type) => {
             
             if(button == input.MouseButton.Left && press_type == input.ButtonPress.Rising) {
                 
                 if(this.Contains(input.InputController.Mouse.Position)) {
-                    element_input_consumer.Blocking = true;
+                    this.Input.Blocking = true;
                     this.Focused = !this.Focused;
                 }
             }
         })
 
-        input.InputController.Register(element_input_consumer);
+        input.InputController.Register(this.Input);
     }
 
     public Update() {
         
     }
 
-    public Draw(offset: gui.Vec2, scale: number): void {
+    public Draw(): void {
         if(this.Focused) {
             Workspace.Context.fillStyle = Workspace.Palette.Focus.Fill.CSS();
             Workspace.Context.beginPath();
@@ -55,18 +63,21 @@ export abstract class WorkspaceElement {
     }
 }
 
+/**
+ * A simple text element which does not interact with any calculations.
+ */
 export class Comment extends WorkspaceElement {
 
     public FontSize: number = 48;
     public Color: gui.Color = new gui.Color(0,0,0);
     public Text: string = "this is a comment";
 
-    public Draw(offset: gui.Vec2, scale: number): void {
-        super.Draw(offset, scale);
+    public Draw(): void {
+        super.Draw();
 
         gui.Control.Context.fillStyle = this.Color.CSS();
-        gui.Control.Context.font = `${this.FontSize * scale}px`
-        gui.Control.Context.fillText(this.Text, offset.X, offset.Y + this.GetSize().Y)
+        gui.Control.Context.font = `${this.FontSize * this.Parent.CameraScale}px`
+        gui.Control.Context.fillText(this.Text, this.GetScreenPosition().X, this.GetScreenPosition().Y + this.GetSize().Y)
     }
 
     public GetSize(): gui.Vec2 {
@@ -81,6 +92,10 @@ export class Comment extends WorkspaceElement {
     }
 }
 
+/**
+ * A class representing a canvas for every mathematical element that can be manipulated --
+ * formulas, graphs, tables, etc.
+ */
 export class Workspace extends gui.Control {
 
     public static WORKSPACE_INPUT_PRIORITY: number = -2;
@@ -133,7 +148,7 @@ export class Workspace extends gui.Control {
         gui.Control.Context.fill()
 
         for(let element of this.Elements) {
-            element.Draw(this.CameraOffset.Sub(pos), this.CameraScale);
+            element.Draw();
         }
 
         super.Draw();

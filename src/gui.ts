@@ -81,12 +81,18 @@ export class CDim {
     }
 }
 
+/**
+ * Represents an RGBA color value
+ */
 export class Color {
     public R: number;
     public G: number;
     public B: number;
     public A: number = 100;
 
+    /** 
+     * Returns a CSS-friendly color string, able to be used as a canvas rule
+     */
     public CSS(): string { return `rgba(${this.R} ${this.G} ${this.B} / ${this.A}%)`; }
 
     public static RGBA(r: number, g: number, b: number, a: number): Color {
@@ -113,22 +119,28 @@ export abstract class Control {
 
     public Position: CDim = CDim.Comps(0,0,0,0);
     public Size: CDim = CDim.Identity();
+    /**
+     * Specifies which "part" of the element gets positioned:
+     * @example
+     * Vec2(0,0) // top left corner is positioned
+     * Vec2(.5,.5) // middle of the element is positioned
+     */
     public Anchor: Vec2 = new Vec2(0,0);
     
     public Parent: Control | undefined;
     public Children: Control[]
 
-    protected GetContext(): CanvasRenderingContext2D { return Control.Canvas.getContext('2d')!; }
-
+    /** Get element size in pixels */
     public PixelSize(): Vec2 {
         const parentSize = this.Parent?.PixelSize() ?? 
-            new Vec2(Control.Canvas.width, Control.Canvas.height); // Use .width/.height
+            new Vec2(Control.Canvas.width, Control.Canvas.height);
         return this.Size.With(parentSize);
     }
     
+    /** Get element position in pixels */
     public PixelPosition(): Vec2 {
         const parentSize = this.Parent?.PixelSize() ?? 
-            new Vec2(Control.Canvas.width, Control.Canvas.height); // Use .width/.height
+            new Vec2(Control.Canvas.width, Control.Canvas.height);
         let position = this.Position.With(parentSize);
         return position.Sub(this.PixelSize().Mult(this.Anchor));
     }
@@ -172,6 +184,9 @@ export abstract class Control {
     }
 }
 
+/**
+ * A container class for {@link Control | Controls}
+ */
 export class GUILayer {
     public Elements: Control[] = [];
 
@@ -193,6 +208,7 @@ export class GUILayer {
     }
 }
 
+/** Simple {@link Control | Control} that draws a filled rectangle */
 export class Rectangle extends Control {
     
     public Color: Color = new Color(0,255,0);
@@ -211,6 +227,9 @@ export class Rectangle extends Control {
     }
 }
 
+/** 
+ * A {@link Control | Control} that renders a provided image. Does not render until it is {@link ImageRect.Loaded | Loaded}
+ */
 export class ImageRect extends Control {
     public Source: HTMLImageElement;
     public Loaded: boolean = false;
