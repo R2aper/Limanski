@@ -1,9 +1,58 @@
 import * as gui from './gui.js'
+import * as input from "./input.js";
 
 export abstract class WorkspaceElement {
-    public Position: gui.Vec2 = gui.Vec2.Zero();
 
-    public abstract Draw(offset: gui.Vec2, scale: number): void;
+    public static WORSPACE_ELEMENT_INPUT_PRIORITY: number = 0;
+
+    public Position: gui.Vec2 = gui.Vec2.Zero();
+    public Focused: boolean = false;
+    public Selected: boolean = false;
+    public Parent!: Workspace;
+    
+    public Contains(probe: gui.Vec2): boolean { 
+        let adjusted_pos = this.GetScreenPosition()
+        return adjusted_pos.Contains(
+            adjusted_pos.Add(this.GetSize()),
+            probe
+        );
+    }
+
+    public GetScreenPosition() {
+        return this.Position.Add(this.Parent.CameraOffset);
+    }
+    public abstract GetSize(): gui.Vec2;
+    
+    constructor() {
+
+        let element_input_consumer = new input.InputConsumer(WorkspaceElement.WORSPACE_ELEMENT_INPUT_PRIORITY);
+        element_input_consumer.Blocking = false;
+        element_input_consumer.MouseEvent.Hook((button, press_type) => {
+            
+            if(button == input.MouseButton.Left && press_type == input.ButtonPress.Rising) {
+                
+                if(this.Contains(input.InputController.Mouse.Position)) {
+                    element_input_consumer.Blocking = true;
+                    this.Focused = !this.Focused;
+                }
+            }
+        })
+
+        input.InputController.Register(element_input_consumer);
+    }
+
+    public Update() {
+        
+    }
+
+    public Draw(offset: gui.Vec2, scale: number): void {
+        if(this.Focused) {
+            Workspace.Context.fillStyle = Workspace.Palette.Focus.Fill.CSS();
+            Workspace.Context.beginPath();
+            Workspace.Context.rect(this.GetScreenPosition().X, this.GetScreenPosition().Y, this.GetSize().X, this.GetSize().Y);
+            Workspace.Context.fill()
+        }
+    }
 }
 
 export class Comment extends WorkspaceElement {
@@ -13,9 +62,17 @@ export class Comment extends WorkspaceElement {
     public Text: string = "this is a comment";
 
     public Draw(offset: gui.Vec2, scale: number): void {
+        super.Draw(offset, scale);
+
         gui.Control.Context.fillStyle = this.Color.CSS();
         gui.Control.Context.font = `${this.FontSize * scale}px`
-        gui.Control.Context.fillText(this.Text, offset.X, offset.Y)
+        gui.Control.Context.fillText(this.Text, offset.X, offset.Y + this.GetSize().Y)
+    }
+
+    public GetSize(): gui.Vec2 {
+        gui.Control.Context.font = `${this.FontSize * this.Parent.CameraScale}px`
+        let metrics = gui.Control.Context.measureText(this.Text);
+        return new gui.Vec2(metrics.width, metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent)
     }
 
     constructor(comment: string) {
@@ -26,6 +83,16 @@ export class Comment extends WorkspaceElement {
 
 export class Workspace extends gui.Control {
 
+    public static WORKSPACE_INPUT_PRIORITY: number = -2;
+    public static Context: CanvasRenderingContext2D;
+
+    public static Palette = {
+        Focus: {
+            Fill: gui.Color.RGBA(124, 176, 255, 70),
+            Outline: gui.Color.RGBA(127, 180, 255, 90)
+        }
+    }
+
     public BackgroundColor: gui.Color = new gui.Color(255,255,255);
     public CameraOffset: gui.Vec2 = gui.Vec2.Zero();
     public CameraScale: number = 1;
@@ -34,15 +101,25 @@ export class Workspace extends gui.Control {
 
     protected Dragged: boolean = false;
 
+    public AddElement(element: WorkspaceElement) {
+        this.Elements.push(element);
+        element.Parent = this;
+    }
+
     constructor() {
         super();
-        gui.Input.InputChanged.Hook((button, press) => {
-            if(press == gui.ButtonPress.Lowering && button == gui.MouseButton.Wheel) {
-                this.Dragged = true;
-            }  else if (press == gui.ButtonPress.Rising && button == gui.MouseButton.Wheel) {
-                this.Dragged = false;
+
+        let workspace_input_consumer = new input.InputConsumer(Workspace.WORKSPACE_INPUT_PRIORITY);
+        workspace_input_consumer.MouseEvent.Hook((button, press_type) => {
+            if(button == input.MouseButton.Wheel) {
+                switch(press_type) {
+                    case input.ButtonPress.Lowering: this.Dragged = true; break;
+                    case input.ButtonPress.Rising: this.Dragged = false; break;
+                }
             }
         });
+
+        input.InputController.Register(workspace_input_consumer);
     }
 
     public override Draw(): void {
@@ -64,9 +141,12 @@ export class Workspace extends gui.Control {
 
     public override Update() {
 
+        for(let element of this.Elements) {
+            element.Update();
+        }
+
         if(this.Dragged) {
-            this.CameraOffset = this.CameraOffset.Sub(gui.Input.Mouse.Delta);
-            console.log(this.CameraOffset)
+            this.CameraOffset = this.CameraOffset.Sub(input.InputController.Mouse.Delta);
         }
 
         super.Update();

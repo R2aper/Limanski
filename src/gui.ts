@@ -1,5 +1,4 @@
 
-import { GenericEvent } from "./events.js";
 
 /**
  * A class representing a 2d vector
@@ -51,6 +50,10 @@ export class Vec2 {
     public Wise(f: (_: number) => number): Vec2 {
         return new Vec2(f(this.X), f(this.Y))
     }
+
+    public Contains(bottom_right: Vec2, probe: Vec2): boolean {
+        return probe.X >= this.X && probe.X <= bottom_right.X && probe.Y >= this.Y && probe.Y <= bottom_right.Y;
+    }
 }
 
 /**
@@ -82,63 +85,20 @@ export class Color {
     public R: number;
     public G: number;
     public B: number;
+    public A: number = 100;
 
-    public CSS(): string { return `rgb(${this.R}, ${this.G}, ${this.B})`; }
+    public CSS(): string { return `rgba(${this.R} ${this.G} ${this.B} / ${this.A}%)`; }
+
+    public static RGBA(r: number, g: number, b: number, a: number): Color {
+        let color = new Color(r, g, b);
+        color.A = a;
+        return color;
+    }
 
     constructor(r: number, g: number, b: number) {
         this.R = r;
         this.G = g;
         this.B = b;
-    }
-}
-
-export enum MouseButton {
-    Left = 0,
-    Wheel = 1,
-    Right = 2,
-    Other = 3,
-    None = 4
-}
-
-export enum ButtonPress {
-    Held, Released, Rising, Lowering
-}
-
-export class Input {
-
-    public static InputChanged: GenericEvent<[MouseButton, ButtonPress]> = new GenericEvent();
-
-    public static Mouse = {
-        Position: new Vec2(0, 0), Pressed: MouseButton.None, Previous: new Vec2(0, 0), Delta: new Vec2(0, 0)
-    };
-
-    public static Update() {
-        this.Mouse.Delta = this.Mouse.Position.Sub(this.Mouse.Previous);
-        this.Mouse.Previous = this.Mouse.Position;
-    }
-
-    public static Initialize(canvas: HTMLCanvasElement) {
-        canvas.addEventListener('mousemove', (e) => {
-            const rect = canvas.getBoundingClientRect();
-            this.Mouse.Position = new Vec2(e.clientX - rect.left, e.clientY - rect.top);
-            console.log(this.Mouse.Delta)
-          });
-          
-          canvas.addEventListener('mousedown', (e: MouseEvent) => {
-            let prev = this.Mouse.Pressed;
-            switch (e.button) {
-              case 0: this.Mouse.Pressed = MouseButton.Left; break;
-              case 1: this.Mouse.Pressed = MouseButton.Wheel; break;
-              case 2: this.Mouse.Pressed = MouseButton.Right; break;
-              default: this.Mouse.Pressed = MouseButton.Other; break;
-            }
-            if (prev == MouseButton.None) { this.InputChanged.Fire(this.Mouse.Pressed, ButtonPress.Lowering); }
-          });
-          
-          canvas.addEventListener('mouseup', () => {
-            this.InputChanged.Fire(this.Mouse.Pressed, ButtonPress.Rising);
-            this.Mouse.Pressed = MouseButton.None;
-          });
     }
 }
 
@@ -222,12 +182,10 @@ export class GUILayer {
     }
 
     public Draw(): void {
-        Input.Update();
         for(let child of this.Elements) {
             child.Draw();
             child.Update();
         }
-        window.requestAnimationFrame(this.Draw)
     }
 
     constructor() { 
