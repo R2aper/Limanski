@@ -55,10 +55,10 @@ export abstract class WorkspaceElement {
 
     public Draw(): void {
         if(this.Focused) {
-            Workspace.Context.fillStyle = Workspace.Palette.Focus.Fill.CSS();
-            Workspace.Context.beginPath();
-            Workspace.Context.rect(this.GetScreenPosition().X, this.GetScreenPosition().Y, this.GetSize().X, this.GetSize().Y);
-            Workspace.Context.fill()
+            Workspace.TargetContext.fillStyle = Workspace.Palette.Focus.Fill.CSS();
+            Workspace.TargetContext.beginPath();
+            Workspace.TargetContext.rect(this.GetScreenPosition().X, this.GetScreenPosition().Y, this.GetSize().X, this.GetSize().Y);
+            Workspace.TargetContext.fill()
         }
     }
 }
@@ -75,14 +75,14 @@ export class Comment extends WorkspaceElement {
     public Draw(): void {
         super.Draw();
 
-        gui.Control.Context.fillStyle = this.Color.CSS();
-        gui.Control.Context.font = `${this.FontSize * this.Parent.CameraScale}px`
-        gui.Control.Context.fillText(this.Text, this.GetScreenPosition().X, this.GetScreenPosition().Y + this.GetSize().Y)
+        Workspace.TargetContext.fillStyle = this.Color.CSS();
+        Workspace.TargetContext.font = `${this.FontSize * this.Parent.CameraScale}px`
+        Workspace.TargetContext.fillText(this.Text, this.GetScreenPosition().X, this.GetScreenPosition().Y + this.GetSize().Y)
     }
 
     public GetSize(): gui.Vec2 {
-        gui.Control.Context.font = `${this.FontSize * this.Parent.CameraScale}px`
-        let metrics = gui.Control.Context.measureText(this.Text);
+        Workspace.TargetContext.font = `${this.FontSize * this.Parent.CameraScale}px`
+        let metrics = Workspace.TargetContext.measureText(this.Text);
         return new gui.Vec2(metrics.width, metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent)
     }
 
@@ -100,6 +100,7 @@ export class Workspace extends gui.Control {
 
     public static WORKSPACE_INPUT_PRIORITY: number = -2;
     public static Context: CanvasRenderingContext2D;
+    public static TargetContext: OffscreenCanvasRenderingContext2D;
 
     public static Palette = {
         Focus: {
@@ -112,6 +113,8 @@ export class Workspace extends gui.Control {
     public CameraOffset: gui.Vec2 = gui.Vec2.Zero();
     public CameraScale: number = 1;
 
+    public RenderTarget!: OffscreenCanvas;
+
     public Elements: WorkspaceElement[] = [];
 
     protected Dragged: boolean = false;
@@ -123,6 +126,13 @@ export class Workspace extends gui.Control {
 
     constructor() {
         super();
+
+        // Make offset canvas resize accordingly whenever the size (viewport) changes
+        this.SizeChanged.Hook((_) => {
+            let size = this.PixelSize();
+            this.RenderTarget = new OffscreenCanvas(size.X, size.Y);
+            Workspace.TargetContext = this.RenderTarget.getContext('2d')!;
+        });
 
         let workspace_input_consumer = new input.InputConsumer(Workspace.WORKSPACE_INPUT_PRIORITY);
         workspace_input_consumer.MouseEvent.Hook((button, press_type) => {
@@ -142,14 +152,16 @@ export class Workspace extends gui.Control {
         let pos = this.PixelPosition();
         let size = this.PixelSize();
 
-        gui.Control.Context.fillStyle = this.BackgroundColor.CSS();
-        gui.Control.Context.beginPath();
-        gui.Control.Context.rect(pos.X, pos.Y, size.X, size.Y);
-        gui.Control.Context.fill()
+        Workspace.TargetContext.fillStyle = this.BackgroundColor.CSS();
+        Workspace.TargetContext.beginPath();
+        Workspace.TargetContext.rect(0, 0, size.X, size.Y);
+        Workspace.TargetContext.fill()
 
         for(let element of this.Elements) {
             element.Draw();
         }
+
+        Workspace.Context.drawImage(this.RenderTarget, pos.X, pos.Y);
 
         super.Draw();
     }

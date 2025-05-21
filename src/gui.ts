@@ -1,3 +1,4 @@
+import { GenericEvent } from "./events.js";
 
 
 /**
@@ -117,8 +118,27 @@ export abstract class Control {
     public static Context: CanvasRenderingContext2D;
     public static Debug: boolean = false;
 
-    public Position: CDim = CDim.Comps(0,0,0,0);
-    public Size: CDim = CDim.Identity();
+    public PositionChanged: GenericEvent<[CDim]> = new GenericEvent();
+    private _Position: CDim = CDim.Comps(0, 0, 0, 0);
+
+    public get Position(): CDim {
+        return this._Position;
+    }
+    public set Position(value: CDim) {
+        this._Position = value;
+        this.PositionChanged.Fire(this._Position);
+    }
+
+    public SizeChanged: GenericEvent<[CDim]> = new GenericEvent();
+    private _Size: CDim = CDim.Identity();
+    public get Size(): CDim {
+        return this._Size;
+    }
+    public set Size(value: CDim) {
+        this._Size = value;
+        this.SizeChanged.Fire(this._Size);
+    }
+
     /**
      * Specifies which "part" of the element gets positioned:
      * @example
