@@ -6,7 +6,20 @@ import * as input from "./input.js";
  */
 export abstract class WorkspaceElement {
 
-    public static WORSPACE_ELEMENT_INPUT_PRIORITY: number = 0;
+    public static WORKSPACE_ELEMENT_INPUT_PRIORITY: number = 0;
+    public static FocusBoxPadding: number = 3;
+
+    public static Palette = {
+        Focus: {
+            Fill: gui.Color.RGBA(0,0,0,0),
+            Outline: gui.Color.RGBA(0,0,0,50)
+        },
+
+        Selection: {
+            Fill: gui.Color.RGBA(124, 176, 255, 70),
+            Outline: gui.Color.RGBA(127, 180, 255, 90)
+        }
+    }
 
     public Position: gui.Vec2 = gui.Vec2.Zero();
     public Focused: boolean = false;
@@ -17,7 +30,7 @@ export abstract class WorkspaceElement {
     
     // Check if the workspace element contains a vec2 position
     public Contains(probe: gui.Vec2): boolean { 
-        let adjusted_pos = this.GetScreenPosition()
+        let adjusted_pos = this.GetScreenPosition().Add(this.Parent.PixelPosition())
         return adjusted_pos.Contains(
             adjusted_pos.Add(this.GetSize()),
             probe
@@ -34,7 +47,7 @@ export abstract class WorkspaceElement {
         // create an input consumer for the element to handle all the generic logic:
         // focus on left click, select on shift + left click or when in selection box, summon context menu on right click
         // etc
-        this.Input = new input.InputConsumer(WorkspaceElement.WORSPACE_ELEMENT_INPUT_PRIORITY);
+        this.Input = new input.InputConsumer(WorkspaceElement.WORKSPACE_ELEMENT_INPUT_PRIORITY);
         this.Input.MouseEvent.Hook((button, press_type) => {
             
             if(button == input.MouseButton.Left && press_type == input.ButtonPress.Rising) {
@@ -55,10 +68,16 @@ export abstract class WorkspaceElement {
 
     public Draw(): void {
         if(this.Focused) {
-            Workspace.TargetContext.fillStyle = Workspace.Palette.Focus.Fill.CSS();
+            Workspace.TargetContext.fillStyle = WorkspaceElement.Palette.Focus.Fill.CSS();
+            Workspace.TargetContext.strokeStyle = WorkspaceElement.Palette.Focus.Outline.CSS();
             Workspace.TargetContext.beginPath();
-            Workspace.TargetContext.rect(this.GetScreenPosition().X, this.GetScreenPosition().Y, this.GetSize().X, this.GetSize().Y);
-            Workspace.TargetContext.fill()
+            Workspace.TargetContext.rect(
+                this.GetScreenPosition().X - WorkspaceElement.FocusBoxPadding, 
+                this.GetScreenPosition().Y - WorkspaceElement.FocusBoxPadding, 
+                this.GetSize().X + WorkspaceElement.FocusBoxPadding * 2, 
+                this.GetSize().Y + WorkspaceElement.FocusBoxPadding * 2);
+            Workspace.TargetContext.fill();
+            Workspace.TargetContext.stroke();
         }
     }
 }
@@ -68,16 +87,34 @@ export abstract class WorkspaceElement {
  */
 export class Comment extends WorkspaceElement {
 
-    public FontSize: number = 48;
+    public FontSize: number = 20;
+    public FontName: string = 'Arial'
     public Color: gui.Color = new gui.Color(0,0,0);
-    public Text: string = "this is a comment";
+    public Text: string;
+
+    public InputHandler: input.StringInputManipulator;
 
     public Draw(): void {
         super.Draw();
+        let pos = this.GetScreenPosition();
 
         Workspace.TargetContext.fillStyle = this.Color.CSS();
-        Workspace.TargetContext.font = `${this.FontSize * this.Parent.CameraScale}px`
-        Workspace.TargetContext.fillText(this.Text, this.GetScreenPosition().X, this.GetScreenPosition().Y + this.GetSize().Y)
+        Workspace.TargetContext.font = `${this.FontSize * this.Parent.CameraScale}px ${this.FontName}`;
+        Workspace.TargetContext.fillText(this.Text, pos.X, pos.Y + this.GetSize().Y);
+
+        
+        if(this.Focused) {
+            // draw cursor
+            let measure = Workspace.TargetContext.measureText(this.Text.slice(0, this.InputHandler.CursorPosition));
+            let start = pos.Add(new gui.Vec2(measure.width, 0));
+            let end = start.Add(new gui.Vec2(0, this.GetSize().Y));
+
+            Workspace.TargetContext.strokeStyle = WorkspaceElement.Palette.Focus.Outline.CSS();
+            Workspace.TargetContext.beginPath();
+            Workspace.TargetContext.moveTo(start.X, start.Y);
+            Workspace.TargetContext.lineTo(end.X, end.Y);
+            Workspace.TargetContext.stroke();
+        }
     }
 
     public GetSize(): gui.Vec2 {
@@ -89,6 +126,16 @@ export class Comment extends WorkspaceElement {
     constructor(comment: string) {
         super();
         this.Text = comment;
+        this.InputHandler = new input.StringInputManipulator(this.Text);
+        this.InputHandler.QuitSignal.Hook(() => {this.Focused = false;})
+
+        this.Input.KeyboardEvent.Hook((e) => {
+            if(this.Focused) {
+                this.Input.Blocking = true;
+                this.InputHandler.ProcessEvent(e);
+                this.Text = this.InputHandler.Text;
+            }
+        })
     }
 }
 
@@ -101,13 +148,6 @@ export class Workspace extends gui.Control {
     public static WORKSPACE_INPUT_PRIORITY: number = -2;
     public static Context: CanvasRenderingContext2D;
     public static TargetContext: OffscreenCanvasRenderingContext2D;
-
-    public static Palette = {
-        Focus: {
-            Fill: gui.Color.RGBA(124, 176, 255, 70),
-            Outline: gui.Color.RGBA(127, 180, 255, 90)
-        }
-    }
 
     public BackgroundColor: gui.Color = new gui.Color(255,255,255);
     public CameraOffset: gui.Vec2 = gui.Vec2.Zero();

@@ -114,6 +114,13 @@ export class Color {
  */
 export abstract class Control {
 
+    public static Palette = {
+        Main: new Color(66, 68, 122),
+        Text: new Color(219, 178, 235),
+        MainHover: new Color(88, 91, 160),
+        MainActive: new Color(106, 110, 193)
+    }
+
     public static Canvas: HTMLCanvasElement;
     public static Context: CanvasRenderingContext2D;
     public static Debug: boolean = false;
@@ -149,6 +156,11 @@ export abstract class Control {
     
     public Parent: Control | undefined;
     public Children: Control[]
+
+    public AddChild(child: Control): void {
+        this.Children.push(child);
+        child.Parent = this;
+    }
 
     /** Get element size in pixels */
     public PixelSize(): Vec2 {
@@ -270,5 +282,39 @@ export class ImageRect extends Control {
         this.Source = new Image();
         this.Source.src = path;
         this.Source.onload = () => { this.Loaded = true; }
+    }
+}
+
+export class Button extends Control {
+    public Hovered: boolean = false;
+    public Held: boolean = false;
+
+    public Text: string = "Button";
+    public TextColor: Color = Control.Palette.Text;
+
+    public FontSize: number = 16;
+    public FontName: string = 'Arial'
+
+    public override Draw(): void {
+        let pos = this.PixelPosition();
+        let size = this.PixelSize();
+        let fillColor = Control.Palette.Main.CSS();
+
+        Control.Context.font = `${this.FontSize}px ${this.FontName}`
+        let textMeasure = Control.Context.measureText(this.Text);
+
+        if(this.Held) { fillColor = Control.Palette.MainActive.CSS(); }
+        else if (this.Hovered) { fillColor = Control.Palette.MainHover.CSS(); }
+
+        Control.Context.fillStyle = fillColor;
+        Control.Context.beginPath();
+        Control.Context.rect(pos.X, pos.Y, size.X, size.Y);
+        Control.Context.fill()
+
+        Control.Context.fillStyle = Control.Palette.Text.CSS();
+        Control.Context.fillText(
+            this.Text, 
+            pos.X + size.X / 2 - textMeasure.width / 2, 
+            pos.Y + size.Y - (textMeasure.actualBoundingBoxAscent + textMeasure.actualBoundingBoxDescent ) / 2)
     }
 }

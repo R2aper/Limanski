@@ -2,6 +2,7 @@ import { GenericEvent } from "./events.js";
 import { Vec2 } from "./gui.js";
 
 type MouseInputEvent = GenericEvent<[MouseButton, ButtonPress]>;
+type KeyboardInputEvent = GenericEvent<[KeyboardEvent]>;
 
 export enum MouseButton {
     Left = 0,
@@ -31,6 +32,8 @@ export enum ButtonPress {
  */
 export class InputConsumer {
     public MouseEvent: MouseInputEvent = new GenericEvent();
+    public KeyboardEvent: KeyboardInputEvent = new GenericEvent();
+
     public Priority: number = 0;
     public Blocking: boolean = false;
 
@@ -45,7 +48,8 @@ export class InputConsumer {
  */
 export class InputController {
 
-    protected static InputChanged: GenericEvent<[MouseButton, ButtonPress]> = new GenericEvent();
+    protected static MouseInputChanged: GenericEvent<[MouseButton, ButtonPress]> = new GenericEvent();
+    protected static KeyboardInputChanged: KeyboardInputEvent = new GenericEvent();
     public static Consumers: InputConsumer[] = [];
 
     public static Mouse = {
@@ -86,19 +90,109 @@ export class InputController {
                 case 2: this.Mouse.Pressed = MouseButton.Right; break;
                 default: this.Mouse.Pressed = MouseButton.Other; break;
             }
-            if (prev == MouseButton.None) { this.InputChanged.Fire(this.Mouse.Pressed, ButtonPress.Lowering); }
+            if (prev == MouseButton.None) { this.MouseInputChanged.Fire(this.Mouse.Pressed, ButtonPress.Lowering); }
         });
 
         canvas.addEventListener('mouseup', () => {
-            this.InputChanged.Fire(this.Mouse.Pressed, ButtonPress.Rising);
+            this.MouseInputChanged.Fire(this.Mouse.Pressed, ButtonPress.Rising);
             this.Mouse.Pressed = MouseButton.None;
         });
 
-        this.InputChanged.Hook((a, b) => {
+        window.addEventListener('keydown', (e) => {this.KeyboardInputChanged.Fire(e);})
+
+        this.MouseInputChanged.Hook((a, b) => {
             for(let consumer of this.Consumers) {
                 consumer.MouseEvent.Fire(a, b);
                 if (consumer.Blocking) { consumer.Blocking = false; break;}
             }
         })
+        this.KeyboardInputChanged.Hook((e) => {
+            for(let consumer of this.Consumers) {
+                consumer.KeyboardEvent.Fire(e);
+                if (consumer.Blocking) { consumer.Blocking = false; break;}
+            }
+        })
+    }
+}
+
+export class StringInputManipulator {
+    public Text: string = '';
+    public CursorPosition: number = 0;
+    public QuitSignal: GenericEvent<[]> = new GenericEvent();
+
+    constructor(text: string) { this.Text = text; }
+
+    protected RemoveAt(index: number): void {
+        this.Text = this.Text.substring(0, index) + this.Text.substring(index + 1);
+        if (this.CursorPosition > index) {
+            this.CursorPosition--;
+        }
+    }
+
+    protected InsertAt(index: number, character: string): void {
+        this.Text = this.Text.substring(0, index) + character + this.Text.substring(index);
+        this.CursorPosition++;
+    }
+
+    public ProcessEvent(event: KeyboardEvent): void {
+        const key: string = event.key;
+        
+        switch(key) {
+            case 'Backspace':
+                if (this.CursorPosition > 0) {
+                    this.RemoveAt(this.CursorPosition - 1);
+                }
+                break;
+                
+            case 'Delete':
+                if (this.CursorPosition < this.Text.length) {
+                    this.RemoveAt(this.CursorPosition);
+                }
+                break;
+                
+            case 'ArrowLeft':
+                if (this.CursorPosition > 0) {
+                    this.CursorPosition--;
+                }
+                break;
+                
+            case 'ArrowRight':
+                if (this.CursorPosition < this.Text.length) {
+                    this.CursorPosition++;
+                }
+                break;
+                
+            case 'Home':
+                this.CursorPosition = 0;
+                break;
+                
+            case 'End':
+                this.CursorPosition = this.Text.length;
+                break;
+
+            case 'Esc':
+                this.QuitSignal.Fire();
+                break;
+
+            case 'Enter':
+                this.QuitSignal.Fire();
+                break;
+                
+            default:
+                // Handle character insertion
+                if (key.length === 1 && !event.ctrlKey && !event.metaKey) {
+                    this.InsertAt(this.CursorPosition, key);
+                }
+                break;
+        }
+        
+        // Prevent default behavior for keys we handle
+        if ([
+            'Backspace', 'Delete', 
+            'ArrowLeft', 'ArrowRight', 
+            'Home', 'End'
+        ].includes(key)) {
+            event.preventDefault();
+        }
     }
 }

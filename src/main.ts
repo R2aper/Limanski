@@ -20,12 +20,27 @@ window.addEventListener("resize", () => {
 });
 
 let workspace = new Workspace();
-workspace.Size = gui.CDim.Comps(.8, 1, 0, 0)
-workspace.Position = gui.CDim.Comps(0,0,0,0);
+workspace.Size = gui.CDim.Comps(.8, 1, 0, -20)
+workspace.Position = gui.CDim.Comps(0, 0, 0, 20);
 workspace.BackgroundColor = new gui.Color(230,230,230);
 workspace.AddElement(new Comment("my comment"))
 
-layer.Add(workspace)
+let topbar = new gui.Rectangle()
+topbar.Size = gui.CDim.Comps(1, 0, 0, 20);
+topbar.Color = gui.Control.Palette.Main;
+
+let file_button = new gui.Button()
+topbar.AddChild(file_button);
+file_button.Size = gui.CDim.Comps(0, 1, 50, 0);
+file_button.Text = 'File'
+
+let edit_button = new gui.Button()
+topbar.AddChild(edit_button);
+edit_button.Position = gui.CDim.Comps(0,0,50,0);
+edit_button.Size = gui.CDim.Comps(0, 1, 50, 0);
+edit_button.Text = 'Edit'
+
+layer.Add(workspace, topbar)
 
 let draw_update = () => {};
 draw_update = () => {

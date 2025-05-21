@@ -4,6 +4,7 @@
       "rootDir": "./src",
       "module": "es6",
       "target": "es6",
+      "lib": ["ESNext", "ES2023", "DOM"],
       "strict": true,
       "sourceMap": true,
       "experimentalDecorators": true
