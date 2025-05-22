@@ -56,6 +56,11 @@ export class InputController {
         Position: new Vec2(0, 0), Pressed: MouseButton.None, Previous: new Vec2(0, 0), Delta: new Vec2(0, 0)
     };
 
+    public static Modifiers = {
+        Shift: false, Ctrl: false,
+        None: () => { return !(this.Modifiers.Shift || this.Modifiers.Ctrl) }
+    }
+
     public static Update() {
         this.Mouse.Delta = this.Mouse.Position.Sub(this.Mouse.Previous);
         this.Mouse.Previous = this.Mouse.Position;
@@ -98,7 +103,22 @@ export class InputController {
             this.Mouse.Pressed = MouseButton.None;
         });
 
-        window.addEventListener('keydown', (e) => {this.KeyboardInputChanged.Fire(e);})
+        window.addEventListener('keydown', (e) => {
+            this.KeyboardInputChanged.Fire(e);
+            if(e.key === 'Shift') {
+                this.Modifiers.Shift = true;
+            } else if (e.key === 'Ctrl') {
+                this.Modifiers.Ctrl = true;
+            }      
+        })
+
+        document.addEventListener('keyup', (e) => {
+            if(e.key === 'Shift') {
+                this.Modifiers.Shift = false;
+            } else if (e.key === 'Ctrl') {
+                this.Modifiers.Ctrl = false;
+            }    
+        })
 
         this.MouseInputChanged.Hook((a, b) => {
             for(let consumer of this.Consumers) {
