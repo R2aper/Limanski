@@ -1,5 +1,6 @@
 import * as gui from './gui.js'
-import * as input from "./input.js";
+import * as input from './input.js';
+import * as ingui from './interactableControl.js'
 
 /**
  * A generic member of the {@link Workspace} class, responding to clicks, selections, camera offsets and scaling
@@ -21,6 +22,12 @@ export abstract class WorkspaceElement {
         }
     }
 
+    public DefaultContextActions: {[name: string]: () => void} = {
+        
+        "Delete": () => { this.Parent.RemoveElement(this); }
+        
+    }
+
     public Position: gui.Vec2 = gui.Vec2.Zero();
     public Focused: boolean = false;
     public Selected: boolean = false;
@@ -37,11 +44,23 @@ export abstract class WorkspaceElement {
         );
     }
 
+    public ToggleSelection() {
+        if(this.Selected) {
+            this.Selected = false;
+            this.Parent.RemoveSelectedElement(this);
+        } else {
+            this.Selected = true;
+            this.Parent.AddSelectedElement(this);
+        }
+    }
+
     public GetScreenPosition() {
         return this.Position.Add(this.Parent.CameraOffset);
     }
-    public abstract GetSize(): gui.Vec2;
     
+    public abstract GetSize(): gui.Vec2;
+    public abstract GetContextMenuEntries(): {[name: string]: () => void};
+
     constructor() {
 
         // create an input consumer for the element to handle all the generic logic:
@@ -54,16 +73,60 @@ export abstract class WorkspaceElement {
                 
                 if(this.Contains(input.InputController.Mouse.Position)) {
                     this.Input.Blocking = true;
-                    console.log(input.InputController.Modifiers.Shift)
+
                     // a click without any modifying keys
                     if (input.InputController.Modifiers.None()) {
                         this.Focused = !this.Focused;
+
                         this.Selected = false;
+                        this.Parent.RemoveSelectedElement(this);
+
                     } else if (input.InputController.Modifiers.Shift) {
-                        this.Selected = !this.Selected;
+                        this.ToggleSelection();
                     }
                     
                 }
+            } else if (button == input.MouseButton.Right && press_type == input.ButtonPress.Rising
+                && this.Contains(input.InputController.Mouse.Position)
+            ) {
+                this.Input.Blocking = true;
+                // clear previous context menu if present
+                if(this.Parent.CurrentContextMenu != undefined) {
+                    this.Parent.Layer.Remove(this.Parent.CurrentContextMenu);
+                    this.Parent.CurrentContextMenu = undefined;
+                }
+
+                // summon context menu
+                let actions = this.GetContextMenuEntries();
+                let height = 0;
+                let width = 0;
+                let context_menu = new gui.Rectangle().With({'Color': Workspace.Palette.Main})
+                let layout = new gui.OrderedLayout().With({
+                    'Direction': 'Vertical', 
+                    'Padding': 0
+                });
+                context_menu.AddChild(layout);
+                context_menu.Position = gui.CDim.FromAbsolute(
+                    input.InputController.Mouse.Position.X,
+                    input.InputController.Mouse.Position.Y
+                );
+
+                // fill the context menu
+                for(let key in actions) {
+                    let button_fn = actions[key];
+                    let measure = Workspace.TargetContext.measureText(key);
+
+                    height += (measure.actualBoundingBoxAscent + measure.actualBoundingBoxDescent);
+                    width = Math.max(width, measure.width);
+                    layout.AddChild(new ingui.Button(button_fn).With({'Text': key}));
+                }
+
+                
+                context_menu.Size = gui.CDim.FromAbsolute(width, height);
+
+                // place the button
+                this.Parent.Layer.Add(context_menu);
+                this.Parent.CurrentContextMenu = context_menu;
             }
         })
 
@@ -136,6 +199,10 @@ export class Comment extends WorkspaceElement {
         }
     }
 
+    public GetContextMenuEntries(): {[name: string]: () => void} {
+        return { ...this.DefaultContextActions }
+    }
+
     public GetSize(): gui.Vec2 {
         Workspace.TargetContext.font = `${this.FontSize * this.Parent.CameraScale}px`
         let metrics = Workspace.TargetContext.measureText(this.Text);
@@ -176,8 +243,11 @@ export class Workspace extends gui.Control {
     public CameraScale: number = 1;
 
     public RenderTarget!: OffscreenCanvas;
+    public Layer: gui.GUILayer;
+    public CurrentContextMenu?: gui.Control;
 
     public Elements: WorkspaceElement[] = [];
+    public SelectedElements: WorkspaceElement[] = [];
 
     protected Dragged: boolean = false;
 
@@ -190,8 +260,18 @@ export class Workspace extends gui.Control {
         this.Elements.splice(this.Elements.indexOf(element), 1);
     }
 
-    constructor() {
+    public AddSelectedElement(element: WorkspaceElement) {
+        this.SelectedElements.push(element);
+    }
+
+    public RemoveSelectedElement(element: WorkspaceElement) {
+        this.SelectedElements.splice(this.SelectedElements.indexOf(element), 1);
+    }
+
+    constructor(layer: gui.GUILayer) {
         super();
+
+        this.Layer = layer;
 
         // Make offset canvas resize accordingly whenever the size (viewport) changes
         this.SizeChanged.Hook((_) => {
@@ -202,11 +282,22 @@ export class Workspace extends gui.Control {
 
         let workspace_input_consumer = new input.InputConsumer(Workspace.WORKSPACE_INPUT_PRIORITY);
         workspace_input_consumer.MouseEvent.Hook((button, press_type) => {
+            // hide context menu if present
+            if(this.CurrentContextMenu != undefined) {
+                this.Layer.Remove(this.CurrentContextMenu);
+                this.CurrentContextMenu = undefined;
+            }
+
             if(button == input.MouseButton.Wheel) {
                 switch(press_type) {
                     case input.ButtonPress.Lowering: this.Dragged = true; break;
                     case input.ButtonPress.Rising: this.Dragged = false; break;
                 }
+                // RMB click on an empty space
+            } else if (button == input.MouseButton.Right && press_type == input.ButtonPress.Rising) {
+                // deselect everything
+                for(let e of this.SelectedElements) {this.RemoveSelectedElement(e);}
+                
             }
         });
 

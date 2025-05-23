@@ -1,5 +1,6 @@
 import * as gui from './gui.js'
 import { InputController } from './input.js';
+import { Button } from './interactableControl.js';
 import { Workspace, Comment } from './workspace.js';
 
 let canvas = document.getElementById('main-canvas') as HTMLCanvasElement;
@@ -12,6 +13,7 @@ let layer = new gui.GUILayer();
 gui.Control.Canvas = canvas;
 gui.Control.Context = context!;
 //gui.Control.Debug = true;
+
 InputController.Initialize(canvas);
 
 window.addEventListener("resize", () => {
@@ -19,26 +21,34 @@ window.addEventListener("resize", () => {
     canvas.height = window.innerHeight;
 });
 
-let workspace = new Workspace();
-workspace.Size = gui.CDim.Comps(.8, 1, 0, -20)
-workspace.Position = gui.CDim.Comps(0, 0, 0, 20);
-workspace.BackgroundColor = new gui.Color(230,230,230);
+let workspace = new Workspace(layer).With({
+    Size: gui.CDim.Comps(.8, 1, 0, -20),
+    Position: gui.CDim.Comps(0, 0, 0, 20),
+    BackgroundColor: new gui.Color(230, 230, 230),
+});
+
 workspace.AddElement(new Comment("my comment"))
 
-let topbar = new gui.Rectangle()
-topbar.Size = gui.CDim.Comps(1, 0, 0, 20);
-topbar.Color = gui.Control.Palette.Main;
+let topbar = new gui.Rectangle().With({
+    Color: gui.Control.Palette.Main,
+    Size: gui.CDim.Comps(1, 0, 0, 20)
+})
 
-let file_button = new gui.Button()
-topbar.AddChild(file_button);
-file_button.Size = gui.CDim.Comps(0, 1, 50, 0);
-file_button.Text = 'File'
+let hlist = new gui.OrderedLayout().With({Direction: "Horizontal", Padding: 0});
+hlist.AddChild(
+    new Button(() => {}).With({
+        Size: gui.CDim.Comps(0, 1, 50, 0),
+        Text: 'File'
+    }) 
+)
+hlist.AddChild(
+    new Button(() => {}).With({
+        Size: gui.CDim.Comps(0, 1, 50, 0),
+        Text: 'Edit'
+    })
+);
 
-let edit_button = new gui.Button()
-topbar.AddChild(edit_button);
-edit_button.Position = gui.CDim.Comps(0,0,50,0);
-edit_button.Size = gui.CDim.Comps(0, 1, 50, 0);
-edit_button.Text = 'Edit'
+topbar.AddChild(hlist);
 
 layer.Add(workspace, topbar)
 

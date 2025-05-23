@@ -146,6 +146,58 @@ export abstract class Control {
         this.SizeChanged.Fire(this._Size);
     }
 
+    public Contains(probe: Vec2): boolean { 
+        let adjusted_pos = this.PixelPosition();
+        return adjusted_pos.Contains(
+            adjusted_pos.Add(this.PixelSize()),
+            probe
+        );
+    }
+
+    public With<T extends this>(obj: Partial<T>): this {
+        let current = this;
+        const descriptors = new Map<PropertyKey, PropertyDescriptor>();
+        
+        while (current) {
+            const currentDescriptors = Object.getOwnPropertyDescriptors(current);
+            for (const [key, descriptor] of Object.entries(currentDescriptors)) {
+                if (!descriptors.has(key)) {
+                    descriptors.set(key, descriptor);
+                }
+            }
+            current = Object.getPrototypeOf(current);
+        }
+
+        // Assign values
+        for (const key in obj) {
+            if (obj.hasOwnProperty(key)) {
+                const sourceValue = obj[key];
+                if (sourceValue === undefined) continue;
+                
+                const descriptor = descriptors.get(key);
+                
+                if (descriptor) {
+                    // Handle property with setter
+                    if (descriptor.set) {
+                        descriptor.set.call(this, sourceValue);
+                    } 
+                    // Handle regular property
+                    else if (!descriptor.get || descriptor.writable !== false) {
+                        (this as any)[key] = sourceValue;
+                    }
+                    // Skip readonly property
+                } 
+
+                else if ((this as any)[key] !== undefined) {
+                    (this as any)[key] = sourceValue;
+                }
+            }
+        }
+    
+
+        return this;
+    }
+
     /**
      * Specifies which "part" of the element gets positioned:
      * @example
@@ -173,7 +225,11 @@ export abstract class Control {
     public PixelPosition(): Vec2 {
         const parentSize = this.Parent?.PixelSize() ?? 
             new Vec2(Control.Canvas.width, Control.Canvas.height);
-        let position = this.Position.With(parentSize);
+        let position = Vec2.Zero();
+        if(this.Parent != undefined) {
+            position = this.Parent.PixelPosition();
+        }
+        position = position.Add(this.Position.With(parentSize));
         return position.Sub(this.PixelSize().Mult(this.Anchor));
     }
 
@@ -196,7 +252,7 @@ export abstract class Control {
             let textsize = Control.Context.measureText(this.constructor.name)
             let textWidth = textsize.width;
             let textHeight = textsize.actualBoundingBoxAscent + textsize.actualBoundingBoxDescent;
-            
+
             Control.Context.beginPath();
             Control.Context.rect(pos.X, pos.Y, size.X, size.Y);
             Control.Context.stroke();
@@ -227,6 +283,11 @@ export class GUILayer {
             this.Elements.push(control);
         }
     }
+
+    public Remove(control: Control) {
+        console.log(this.Elements.indexOf(control))
+        this.Elements.splice(this.Elements.indexOf(control), 1);
+    } 
 
     public Draw(): void {
         for(let child of this.Elements) {
@@ -285,36 +346,30 @@ export class ImageRect extends Control {
     }
 }
 
-export class Button extends Control {
-    public Hovered: boolean = false;
-    public Held: boolean = false;
+export class OrderedLayout extends Control {
 
-    public Text: string = "Button";
-    public TextColor: Color = Control.Palette.Text;
+    public Direction: "Horizontal" | "Vertical" = "Horizontal";
+    public Padding: number = 5;
 
-    public FontSize: number = 16;
-    public FontName: string = 'Arial'
-
-    public override Draw(): void {
+    public override AddChild(child: Control): void {
         let pos = this.PixelPosition();
-        let size = this.PixelSize();
-        let fillColor = Control.Palette.Main.CSS();
+        if(this.Children.length == 0) {
+            child.Position = CDim.Comps(0,0,0,0);
+            this.Children.push(child);
+            child.Parent = this;
+            return;
+        }
 
-        Control.Context.font = `${this.FontSize}px ${this.FontName}`
-        let textMeasure = Control.Context.measureText(this.Text);
+        let previous_child = this.Children[this.Children.length - 1];
+        let offset!: Vec2;
+        if(this.Direction == "Horizontal") {
+            offset = previous_child.Position.Absolute.Add(new Vec2(this.Padding + previous_child.PixelSize().X, 0))
+        } else {
+            offset = previous_child.Position.Absolute.Add(new Vec2(0, this.Padding + previous_child.PixelSize().Y))
+        }
 
-        if(this.Held) { fillColor = Control.Palette.MainActive.CSS(); }
-        else if (this.Hovered) { fillColor = Control.Palette.MainHover.CSS(); }
-
-        Control.Context.fillStyle = fillColor;
-        Control.Context.beginPath();
-        Control.Context.rect(pos.X, pos.Y, size.X, size.Y);
-        Control.Context.fill()
-
-        Control.Context.fillStyle = Control.Palette.Text.CSS();
-        Control.Context.fillText(
-            this.Text, 
-            pos.X + size.X / 2 - textMeasure.width / 2, 
-            pos.Y + size.Y - (textMeasure.actualBoundingBoxAscent + textMeasure.actualBoundingBoxDescent ) / 2)
+        this.Children.push(child);
+        child.Parent = this;
+        child.Position = CDim.FromAbsolute(offset.X, offset.Y);
     }
 }
